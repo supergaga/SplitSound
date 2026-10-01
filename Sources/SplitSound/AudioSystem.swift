@@ -1,3 +1,4 @@
+import AudioToolbox
 import CoreAudio
 import Foundation
 
@@ -75,6 +76,102 @@ enum AudioSystem {
         let alerts = try? outputDeviceID(kAudioHardwarePropertyDefaultSystemOutputDevice)
         guard alerts != device.objectID else { return }
         try setOutputDevice(device.objectID, selector: kAudioHardwarePropertyDefaultSystemOutputDevice)
+    }
+
+    /// Control Center’s Sound slider. This is Virtual Main Volume, not the raw channel scalar.
+    static func outputVolume(uid: String) -> Float {
+        guard let device = try? outputDevices().first(where: { $0.uid == uid }) else { return 1 }
+        if let virtual = readProperty(device.objectID, selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume, element: kAudioObjectPropertyElementMain) {
+            return virtual
+        }
+        let values = volumeElements(device.objectID).compactMap { readVolume(device.objectID, element: $0) }
+        return values.max() ?? 1
+    }
+
+    static func setOutputVolume(uid: String, value: Float) {
+        guard let device = try? outputDevices().first(where: { $0.uid == uid }) else { return }
+        let scalar = min(1, max(0, value))
+        var virtual = volumeAddress(selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume, element: kAudioObjectPropertyElementMain)
+        if AudioObjectHasProperty(device.objectID, &virtual) {
+            writeProperty(scalar, device: device.objectID, selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume, element: kAudioObjectPropertyElementMain)
+            return
+        }
+        for element in volumeElements(device.objectID) {
+            writeVolume(scalar, device: device.objectID, element: element)
+        }
+    }
+
+    static func volumeListenerAddress(for device: AudioObjectID) -> AudioObjectPropertyAddress? {
+        var virtual = volumeAddress(selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume, element: kAudioObjectPropertyElementMain)
+        if AudioObjectHasProperty(device, &virtual) { return virtual }
+        guard let element = volumeElements(device).first else { return nil }
+        return volumeAddress(element: element)
+    }
+
+    private static func volumeElements(_ device: AudioObjectID) -> [AudioObjectPropertyElement] {
+        var master = volumeAddress(element: kAudioObjectPropertyElementMain)
+        if AudioObjectHasProperty(device, &master) {
+            return [kAudioObjectPropertyElementMain]
+        }
+        return (1...8).compactMap { element -> AudioObjectPropertyElement? in
+            let propertyElement = AudioObjectPropertyElement(element)
+            var address = volumeAddress(element: propertyElement)
+            return AudioObjectHasProperty(device, &address) ? propertyElement : nil
+        }
+    }
+
+    private static func volumeAddress(
+        selector: AudioObjectPropertySelector = kAudioDevicePropertyVolumeScalar,
+        element: AudioObjectPropertyElement
+    ) -> AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: kAudioObjectPropertyScopeOutput,
+            mElement: element
+        )
+    }
+
+    private static func readProperty(
+        _ device: AudioObjectID,
+        selector: AudioObjectPropertySelector,
+        element: AudioObjectPropertyElement
+    ) -> Float? {
+        var address = volumeAddress(selector: selector, element: element)
+        guard AudioObjectHasProperty(device, &address) else { return nil }
+        var value: Float32 = 0
+        var size = UInt32(MemoryLayout<Float32>.size)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr else { return nil }
+        return value
+    }
+
+    private static func writeProperty(
+        _ value: Float,
+        device: AudioObjectID,
+        selector: AudioObjectPropertySelector,
+        element: AudioObjectPropertyElement
+    ) {
+        var address = volumeAddress(selector: selector, element: element)
+        guard AudioObjectHasProperty(device, &address) else { return }
+        var scalar = value
+        let size = UInt32(MemoryLayout<Float32>.size)
+        AudioObjectSetPropertyData(device, &address, 0, nil, size, &scalar)
+    }
+
+    private static func readVolume(_ device: AudioObjectID, element: AudioObjectPropertyElement) -> Float? {
+        var address = volumeAddress(element: element)
+        guard AudioObjectHasProperty(device, &address) else { return nil }
+        var value: Float32 = 0
+        var size = UInt32(MemoryLayout<Float32>.size)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr else { return nil }
+        return value
+    }
+
+    private static func writeVolume(_ value: Float, device: AudioObjectID, element: AudioObjectPropertyElement) {
+        var address = volumeAddress(element: element)
+        guard AudioObjectHasProperty(device, &address) else { return }
+        var scalar = value
+        let size = UInt32(MemoryLayout<Float32>.size)
+        AudioObjectSetPropertyData(device, &address, 0, nil, size, &scalar)
     }
 
     static func setDefaultOutput(uid: String) throws {

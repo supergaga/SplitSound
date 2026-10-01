@@ -15,9 +15,9 @@ Send each Mac app to its own audio output. A music app can play through a Blueto
 
 ## Features
 
-- Choose an output device per app, or leave the app on the system output.
-- Set a separate volume after an app is routed.
-- Apps show up when they play audio. Nothing is added by hand, and the choice stays after the app quits.
+- The output volume slider is the same control as System Settings → Sound. Each playing app also has its own volume, and 100% matches that system level.
+- Only apps that are currently playing are listed.
+- Optional EQ presets per app: Bass, Vocal, Harman preference bass, Treble, Night, and Podcast.
 - If the chosen device disconnects, that audio falls back to the system output and returns when the device reconnects.
 - No virtual audio driver and no kernel extension.
 
@@ -27,7 +27,7 @@ macOS 15 or later.
 
 ## Install
 
-Download `SplitSound-macos.zip` from the [latest release](releases/latest), unzip it, and move **Split Sound** into `/Applications`.
+Download `SplitSound-macos.zip` from the [latest release](https://github.com/supergaga/SplitSound/releases/latest), unzip it, and move **Split Sound** into `/Applications`.
 
 ```bash
 open /Applications/SplitSound.app

@@ -5,10 +5,9 @@ import AppKit
 
 struct MenuRoot: View {
     @ObservedObject private var model = AppModel.shared
-    @State private var query = ""
 
     var body: some View {
-        let rows = model.visibleApps(matching: query)
+        let rows = model.visibleApps()
         VStack(alignment: .leading, spacing: 12) {
             header
             labeledPicker(
@@ -22,11 +21,6 @@ struct MenuRoot: View {
                 ForEach(model.devices) { device in
                     Text(device.name).tag(device.uid)
                 }
-            }
-            if model.visibleApps(matching: "").count > 10 {
-                TextField("Search apps", text: $query)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
             }
             appList(rows)
             settings
@@ -49,9 +43,7 @@ struct MenuRoot: View {
     private func appList(_ rows: [AudioApp]) -> some View {
         ScrollView {
             if rows.isEmpty {
-                Text(model.apps.isEmpty
-                    ? "Play audio in an app and it will show up here."
-                    : "No matching apps.")
+                Text("Play audio in an app and it will show up here.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -64,7 +56,7 @@ struct MenuRoot: View {
             }
         }
         .scrollIndicators(.hidden)
-        .frame(height: min(280, max(36, CGFloat(max(rows.count, 1)) * (rows.contains(where: diverts) ? 58 : 32))))
+        .frame(height: min(320, max(64, CGFloat(max(rows.count, 1)) * 86)))
     }
 
     private var settings: some View {
@@ -90,11 +82,6 @@ struct MenuRoot: View {
         .toggleStyle(.checkbox)
     }
 
-    private func diverts(_ app: AudioApp) -> Bool {
-        guard let uid = model.routes[app.id]?.deviceUID else { return false }
-        return uid != model.defaultOutputUID && model.devices.contains { $0.uid == uid }
-    }
-
     private func labeledPicker<Options: View>(
         title: LocalizedStringKey,
         selection: Binding<String>,
@@ -114,6 +101,25 @@ struct MenuRoot: View {
             .labelsHidden()
             .pickerStyle(.menu)
             .frame(maxWidth: .infinity, alignment: .leading)
+            VolumeSlider(value: Binding(
+                get: { model.systemVolume },
+                set: { model.setSystemVolume($0) }
+            ))
+        }
+    }
+}
+
+private struct VolumeSlider: View {
+    @Binding var value: Double
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Slider(value: $value, in: 0...1)
+                .controlSize(.mini)
+            Text("\(Int((value * 100).rounded()))%")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 32, alignment: .trailing)
         }
     }
 }
@@ -138,11 +144,18 @@ private struct AppRouteRow: View {
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if diverts {
-                Slider(value: volumeBinding, in: 0...1)
-                    .controlSize(.mini)
-                    .accessibilityLabel(Text(app.name))
+            Picker("EQ", selection: eqBinding) {
+                ForEach(EQPreset.allCases) { preset in
+                    Text(preset.label).tag(preset.rawValue)
+                }
             }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .controlSize(.small)
+            VolumeSlider(value: Binding(
+                get: { model.displayedAppVolume(for: app) },
+                set: { model.setDisplayedAppVolume(for: app, shown: $0) }
+            ))
             if let note = model.notes[app.id] {
                 Text(note.message)
                     .font(.caption2)
@@ -194,16 +207,11 @@ private struct AppRouteRow: View {
         )
     }
 
-    private var volumeBinding: Binding<Double> {
+    private var eqBinding: Binding<String> {
         Binding(
-            get: { model.routes[app.id]?.volume ?? 1 },
-            set: { model.setVolume(for: app, volume: $0) }
+            get: { model.routes[app.id]?.eq ?? EQPreset.off.rawValue },
+            set: { model.setEQ(for: app, preset: $0) }
         )
-    }
-
-    private var diverts: Bool {
-        guard let uid = model.routes[app.id]?.deviceUID else { return false }
-        return uid != model.defaultOutputUID && model.devices.contains { $0.uid == uid }
     }
 
     private func deviceTitle(_ device: OutputDevice) -> String {

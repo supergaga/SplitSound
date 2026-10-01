@@ -23,3 +23,11 @@
 "No audio is coming through. Allow Split Sound under System Settings, Privacy & Security, Screen & System Audio Recording. Without permission, a routed app stays silent." = "沒有收到聲音。請在「系統設定 → 隱私權與安全性 → 螢幕錄製與系統錄音」中允許聲音分流。未允許時，被分流的 App 會沒有聲音。";
 "%@ (System)" = "%1$@（系統）";
 "Could not change the audio route (%@)." = "無法切換音訊輸出（%1$@）。";
+"EQ" = "等化";
+"Off" = "關閉";
+"Bass" = "低音";
+"Vocal" = "人聲";
+"Harman" = "Harman";
+"Treble" = "高音";
+"Night" = "夜間";
+"Podcast" = "Podcast";

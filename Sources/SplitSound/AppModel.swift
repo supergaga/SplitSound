@@ -6,8 +6,41 @@ import ServiceManagement
 
 struct StoredRoute: Codable, Equatable, Sendable {
     var deviceUID: String
-    var volume: Double
     var displayName: String
+    var eq: String
+    /// 1 matches the Sound settings volume. Lower values only affect this app.
+    var volume: Double
+
+    init(deviceUID: String, displayName: String, eq: String = EQPreset.off.rawValue, volume: Double = 1) {
+        self.deviceUID = deviceUID
+        self.displayName = displayName
+        self.eq = eq
+        self.volume = volume
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        deviceUID = try container.decode(String.self, forKey: .deviceUID)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? deviceUID
+        eq = try container.decodeIfPresent(String.self, forKey: .eq) ?? EQPreset.off.rawValue
+        volume = try container.decodeIfPresent(Double.self, forKey: .volume) ?? 1
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(deviceUID, forKey: .deviceUID)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encode(eq, forKey: .eq)
+        try container.encode(volume, forKey: .volume)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case deviceUID, displayName, eq, volume
+    }
+
+    var needsProcessing: Bool {
+        !deviceUID.isEmpty || eq != EQPreset.off.rawValue || abs(volume - 1) > 0.005
+    }
 }
 
 struct RowNote: Equatable, Sendable {
@@ -19,6 +52,7 @@ private struct RouteAssignment: Equatable, Sendable {
     var key: String
     var processIDs: [AudioObjectID]
     var deviceUID: String
+    var eq: String
     var volume: Float
     var playing: Bool
 }
@@ -78,8 +112,8 @@ private final class EngineHub: @unchecked Sendable {
                 deviceUID: item.deviceUID
             )
             engines[item.key] = engine
-            engine.volume = item.volume
             engine.isPlaying = item.playing
+            engine.volume = item.volume
             if !engine.isRunning || engine.processIDs != item.processIDs || engine.deviceUID != item.deviceUID {
                 do {
                     try engine.restart(processIDs: item.processIDs, deviceUID: item.deviceUID)
@@ -87,16 +121,11 @@ private final class EngineHub: @unchecked Sendable {
                     snapshot.errors[item.key] = error.localizedDescription
                 }
             }
+            engine.setEQ(item.eq)
             if engine.silenceHint { snapshot.silenceKeys.append(item.key) }
             if engine.formatProblem { snapshot.formatKeys.append(item.key) }
         }
         return snapshot
-    }
-
-    func setVolume(key: String, volume: Float) {
-        queue.async {
-            self.engines[key]?.volume = volume
-        }
     }
 }
 
@@ -108,6 +137,7 @@ final class AppModel: ObservableObject {
     @Published var apps: [AudioApp] = []
     @Published var routes: [String: StoredRoute] = [:]
     @Published var defaultOutputUID = ""
+    @Published var systemVolume: Double = 1
     @Published var showSystemProcesses = false
     @Published var launchAtLogin = false
     @Published var notes: [String: RowNote] = [:]
@@ -121,6 +151,9 @@ final class AppModel: ObservableObject {
     private var reconcileGeneration = 0
     private var listenerTask: Task<Void, Never>?
     private var saveTask: Task<Void, Never>?
+    private var volumeWatch = AudioObjectID(kAudioObjectUnknown)
+    private var volumeWatchAddress = AudioObjectPropertyAddress()
+    private var volumeListener: AudioObjectPropertyListenerBlock?
     private let scanQueue = DispatchQueue(label: "app.splitsound.scan")
 
     private var settingsURL: URL {
@@ -139,6 +172,11 @@ final class AppModel: ObservableObject {
         NSApp.setActivationPolicy(.accessory)
         hub.prepare()
         installListeners()
+        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+            Task { @MainActor in
+                AppModel.shared.performRefresh(readingNotes: true)
+            }
+        }
         performRefresh(readingNotes: false)
     }
 
@@ -154,10 +192,6 @@ final class AppModel: ObservableObject {
         saveTask?.cancel()
         save()
         hub.shutdown()
-    }
-
-    private var watchesDevices: Bool {
-        routes.contains { $0.value.deviceUID != defaultOutputUID }
     }
 
     private func scheduleRefresh() {
@@ -176,6 +210,7 @@ final class AppModel: ObservableObject {
             let devices = (try? AudioSystem.outputDevices()) ?? []
             let apps = AudioSystem.audioApps()
             let defaultUID = (try? AudioSystem.defaultOutputUID()) ?? ""
+            let systemVolume = defaultUID.isEmpty ? 1 : Double(AudioSystem.outputVolume(uid: defaultUID))
             if !defaultUID.isEmpty {
                 try? AudioSystem.alignAlertSounds(withOutput: defaultUID)
             }
@@ -188,24 +223,11 @@ final class AppModel: ObservableObject {
                     self.refreshStoredNames()
                 }
                 if defaultUID != self.defaultOutputUID { self.defaultOutputUID = defaultUID }
-                if changed || (readingNotes && self.watchesDevices) {
+                if abs(systemVolume - self.systemVolume) > 0.005 { self.systemVolume = systemVolume }
+                self.watchSystemVolume(uid: defaultUID)
+                if changed || (readingNotes && !self.routes.isEmpty) {
                     self.reconcile()
                 }
-                self.updatePolling()
-            }
-        }
-    }
-
-    private func updatePolling() {
-        guard watchesDevices else {
-            timer?.invalidate()
-            timer = nil
-            return
-        }
-        guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
-            Task { @MainActor in
-                AppModel.shared.performRefresh(readingNotes: true)
             }
         }
     }
@@ -221,27 +243,92 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func setOutput(for app: AudioApp, deviceUID: String?) {
-        if let deviceUID {
-            routes[app.id] = StoredRoute(
-                deviceUID: deviceUID,
-                volume: routes[app.id]?.volume ?? 1,
-                displayName: app.name
-            )
-        } else {
-            routes[app.id] = nil
+    private func watchSystemVolume(uid: String) {
+        guard let device = devices.first(where: { $0.uid == uid }),
+              var listenerAddress = AudioSystem.volumeListenerAddress(for: device.objectID) else { return }
+        guard device.objectID != volumeWatch || listenerAddress.mSelector != volumeWatchAddress.mSelector else { return }
+        if volumeWatch != AudioObjectID(kAudioObjectUnknown), let volumeListener {
+            var previous = volumeWatchAddress
+            AudioObjectRemovePropertyListenerBlock(volumeWatch, &previous, DispatchQueue.main, volumeListener)
         }
+        guard AudioObjectHasProperty(device.objectID, &listenerAddress) else { return }
+        let block: AudioObjectPropertyListenerBlock = { _, _ in
+            Task { @MainActor in
+                guard !AppModel.shared.defaultOutputUID.isEmpty else { return }
+                let value = Double(AudioSystem.outputVolume(uid: AppModel.shared.defaultOutputUID))
+                if abs(value - AppModel.shared.systemVolume) > 0.005 {
+                    AppModel.shared.systemVolume = value
+                }
+            }
+        }
+        volumeListener = block
+        volumeWatch = device.objectID
+        volumeWatchAddress = listenerAddress
+        AudioObjectAddPropertyListenerBlock(device.objectID, &listenerAddress, DispatchQueue.main, block)
+    }
+
+    func setSystemVolume(_ value: Double) {
+        let clamped = min(1, max(0, value))
+        systemVolume = clamped
+        guard !defaultOutputUID.isEmpty else { return }
+        AudioSystem.setOutputVolume(uid: defaultOutputUID, value: Float(clamped))
+    }
+
+    func setOutput(for app: AudioApp, deviceUID: String?) {
+        updateRoute(for: app, deviceUID: deviceUID ?? "", eq: routes[app.id]?.eq ?? EQPreset.off.rawValue)
+    }
+
+    func setEQ(for app: AudioApp, preset: String) {
+        updateRoute(for: app, deviceUID: routes[app.id]?.deviceUID ?? "", eq: preset)
+    }
+
+    /// The slider uses the same 0...1 scale as Control Center. 100% of an app is the current system level, not a second louder ceiling.
+    func displayedAppVolume(for app: AudioApp) -> Double {
+        let gain = routes[app.id]?.volume ?? 1
+        return min(1, max(0, systemVolume * gain))
+    }
+
+    func setDisplayedAppVolume(for app: AudioApp, shown: Double) {
+        let shown = min(1, max(0, shown))
+        if systemVolume < 0.02 {
+            setSystemVolume(shown)
+            setAppVolume(for: app, volume: 1)
+            return
+        }
+        if shown > systemVolume + 0.015 {
+            setSystemVolume(shown)
+            setAppVolume(for: app, volume: 1)
+        } else {
+            setAppVolume(for: app, volume: shown / systemVolume)
+        }
+    }
+
+    func setAppVolume(for app: AudioApp, volume: Double) {
+        let clamped = min(1, max(0, volume))
+        let deviceUID = routes[app.id]?.deviceUID ?? ""
+        let eq = routes[app.id]?.eq ?? EQPreset.off.rawValue
+        storeRoute(for: app, deviceUID: deviceUID, eq: eq, volume: clamped)
+        scheduleSave()
+        reconcile()
+    }
+
+    private func updateRoute(for app: AudioApp, deviceUID: String, eq: String) {
+        storeRoute(for: app, deviceUID: deviceUID, eq: eq, volume: routes[app.id]?.volume ?? 1)
         saveTask?.cancel()
         save()
         reconcile()
-        updatePolling()
     }
 
-    func setVolume(for app: AudioApp, volume: Double) {
-        guard var route = routes[app.id] else { return }
-        route.volume = min(1, max(0, volume))
-        routes[app.id] = route
-        hub.setVolume(key: app.id, volume: Float(route.volume))
+    private func storeRoute(for app: AudioApp, deviceUID: String, eq: String, volume: Double) {
+        let unchanged = deviceUID.isEmpty && eq == EQPreset.off.rawValue && abs(volume - 1) <= 0.005
+        if unchanged {
+            routes[app.id] = nil
+        } else {
+            routes[app.id] = StoredRoute(deviceUID: deviceUID, displayName: app.name, eq: eq, volume: volume)
+        }
+    }
+
+    private func scheduleSave() {
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(400))
@@ -286,30 +373,10 @@ final class AppModel: ObservableObject {
         NSApp.terminate(nil)
     }
 
-    func visibleApps(matching query: String) -> [AudioApp] {
-        var rows = apps.filter { showSystemProcesses || !$0.isSystem }
-        let known = Set(rows.map(\.id))
-        for (key, route) in routes where !known.contains(key) {
-            rows.append(AudioApp(
-                id: key,
-                name: route.displayName,
-                bundlePath: nil,
-                processIDs: [],
-                isPlaying: false,
-                isSystem: false
-            ))
-        }
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            rows = rows.filter { $0.name.localizedCaseInsensitiveContains(trimmed) }
-        }
-        return rows.sorted { lhs, rhs in
-            if lhs.isPlaying != rhs.isPlaying { return lhs.isPlaying }
-            let leftRouted = routes[lhs.id] != nil
-            let rightRouted = routes[rhs.id] != nil
-            if leftRouted != rightRouted { return leftRouted }
-            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-        }
+    func visibleApps() -> [AudioApp] {
+        apps
+            .filter { $0.isPlaying && (showSystemProcesses || !$0.isSystem) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     private func refreshStoredNames() {
@@ -331,21 +398,26 @@ final class AppModel: ObservableObject {
         let connected = Set(devices.map(\.uid))
 
         for (key, route) in routes {
-            if !connected.contains(route.deviceUID) {
+            let followsSystem = route.deviceUID.isEmpty
+            if !followsSystem && !connected.contains(route.deviceUID) {
                 immediate[key] = RowNote(
                     message: String(localized: "The device is offline. Audio is using the system output until it reconnects."),
                     warning: true
                 )
                 continue
             }
-            guard let app = apps.first(where: { $0.id == key }), !app.processIDs.isEmpty else { continue }
-            if route.deviceUID == defaultOutputUID { continue }
+            guard let app = apps.first(where: { $0.id == key }), app.isPlaying, !app.processIDs.isEmpty else { continue }
+            let target = followsSystem ? defaultOutputUID : route.deviceUID
+            let customEQ = route.eq != EQPreset.off.rawValue
+            let customVolume = abs(route.volume - 1) > 0.005
+            if target == defaultOutputUID && !customEQ && !customVolume { continue }
             desired.append(RouteAssignment(
                 key: key,
                 processIDs: app.processIDs,
-                deviceUID: route.deviceUID,
+                deviceUID: target,
+                eq: route.eq,
                 volume: Float(route.volume),
-                playing: app.isPlaying
+                playing: true
             ))
         }
 

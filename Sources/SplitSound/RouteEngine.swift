@@ -33,6 +33,9 @@ final class RouteEngine: @unchecked Sendable {
     private var ioProc: AudioDeviceIOProcID?
     private let ioQueue = DispatchQueue(label: "app.splitsound.io", qos: .userInteractive)
     private let levels: UnsafeMutablePointer<RouteLevels>
+    private let eq = UnsafeMutablePointer<EQRuntime>.allocate(capacity: 1)
+    private var eqPreset = EQPreset.off.rawValue
+    private var sampleRate: Double = 48_000
     private var startedAt = Date()
 
     init(key: String, processIDs: [AudioObjectID], deviceUID: String) {
@@ -41,12 +44,15 @@ final class RouteEngine: @unchecked Sendable {
         self.deviceUID = deviceUID
         levels = UnsafeMutablePointer<RouteLevels>.allocate(capacity: 1)
         levels.initialize(to: RouteLevels())
+        eq.initialize(to: EQRuntime())
     }
 
     deinit {
         stop()
         levels.deinitialize(count: 1)
         levels.deallocate()
+        eq.deinitialize(count: 1)
+        eq.deallocate()
     }
 
     var volume: Float {
@@ -54,12 +60,17 @@ final class RouteEngine: @unchecked Sendable {
         set { levels.pointee.gain = min(1, max(0, newValue)) }
     }
 
+    func setEQ(_ preset: String) {
+        eqPreset = preset
+        let filters = (EQPreset(rawValue: preset) ?? .off).filters(sampleRate: sampleRate)
+        eq.pointee.load(filters)
+    }
+
     var isRunning: Bool { ioProc != nil }
 
     var silenceHint: Bool {
         isRunning
             && isPlaying
-            && volume > 0
             && levels.pointee.heard == 0
             && levels.pointee.bail == 0
             && levels.pointee.calls > 30
@@ -76,6 +87,7 @@ final class RouteEngine: @unchecked Sendable {
             try createTap()
             try createAggregate()
             try startIO()
+            setEQ(eqPreset)
             startedAt = Date()
             levels.pointee.heard = 0
             levels.pointee.bail = 0
@@ -174,16 +186,19 @@ final class RouteEngine: @unchecked Sendable {
             throw AudioError(status: kAudioHardwareUnsupportedOperationError)
         }
 
+        sampleRate = tapFormat.mSampleRate
         let tapLayout = StreamLayout(tapFormat)
         let outputLayout = StreamLayout(outputFormat)
         let levels = self.levels
+        let eq = self.eq
         let block: AudioDeviceIOBlock = { _, inputData, _, outputData, _ in
             render(
                 input: inputData,
                 tapLayout: tapLayout,
                 output: outputData,
                 outputLayout: outputLayout,
-                levels: levels
+                levels: levels,
+                eq: eq
             )
         }
 
@@ -210,7 +225,8 @@ private func render(
     tapLayout: StreamLayout,
     output: UnsafeMutablePointer<AudioBufferList>,
     outputLayout: StreamLayout,
-    levels: UnsafeMutablePointer<RouteLevels>
+    levels: UnsafeMutablePointer<RouteLevels>,
+    eq: UnsafeMutablePointer<EQRuntime>
 ) {
     let outputList = UnsafeMutableAudioBufferListPointer(output)
     let inputList = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
@@ -238,20 +254,20 @@ private func render(
     }
     levels.pointee.bail = 0
 
-    let volume = levels.pointee.gain
-    guard volume > 0 else { return }
-
     var loudest: Float = 0
     for frame in 0..<frames {
-        let left = tapSample(inputList, offset: inputOffset, layout: tapLayout, channel: 0, frame: frame)
-        let right = tapLayout.channels > 1
+        var left = tapSample(inputList, offset: inputOffset, layout: tapLayout, channel: 0, frame: frame)
+        var right = tapLayout.channels > 1
             ? tapSample(inputList, offset: inputOffset, layout: tapLayout, channel: 1, frame: frame)
             : left
+        left = eq.pointee.process(left: left)
+        right = eq.pointee.process(right: right)
+        let gain = levels.pointee.gain
         if outputLayout.channels == 1 {
-            loudest = max(loudest, writeSample((left + right) * 0.5 * volume, to: outputList, layout: outputLayout, channel: 0, frame: frame))
+            loudest = max(loudest, writeSample((left + right) * 0.5 * gain, to: outputList, layout: outputLayout, channel: 0, frame: frame))
         } else {
-            loudest = max(loudest, writeSample(left * volume, to: outputList, layout: outputLayout, channel: 0, frame: frame))
-            loudest = max(loudest, writeSample(right * volume, to: outputList, layout: outputLayout, channel: 1, frame: frame))
+            loudest = max(loudest, writeSample(left * gain, to: outputList, layout: outputLayout, channel: 0, frame: frame))
+            loudest = max(loudest, writeSample(right * gain, to: outputList, layout: outputLayout, channel: 1, frame: frame))
         }
     }
     if loudest > 0.01 {

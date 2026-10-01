@@ -23,3 +23,11 @@
 "No audio is coming through. Allow Split Sound under System Settings, Privacy & Security, Screen & System Audio Recording. Without permission, a routed app stays silent." = "No audio is coming through. Allow Split Sound under System Settings, Privacy & Security, Screen & System Audio Recording. Without permission, a routed app stays silent.";
 "%@ (System)" = "%@ (System)";
 "Could not change the audio route (%@)." = "Could not change the audio route (%@).";
+"EQ" = "EQ";
+"Off" = "Off";
+"Bass" = "Bass";
+"Vocal" = "Vocal";
+"Harman" = "Harman";
+"Treble" = "Treble";
+"Night" = "Night";
+"Podcast" = "Podcast";
