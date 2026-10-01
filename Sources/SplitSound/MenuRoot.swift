@@ -152,10 +152,7 @@ private struct AppRouteRow: View {
             .labelsHidden()
             .pickerStyle(.menu)
             .controlSize(.small)
-            VolumeSlider(value: Binding(
-                get: { model.displayedAppVolume(for: app) },
-                set: { model.setDisplayedAppVolume(for: app, shown: $0) }
-            ))
+            VolumeSlider(value: appVolumeBinding)
             if let note = model.notes[app.id] {
                 Text(note.message)
                     .font(.caption2)
@@ -204,6 +201,20 @@ private struct AppRouteRow: View {
         Binding(
             get: { model.routes[app.id]?.deviceUID ?? "" },
             set: { model.setOutput(for: app, deviceUID: $0.isEmpty ? nil : $0) }
+        )
+    }
+
+    private var appVolumeBinding: Binding<Double> {
+        let deviceUID = model.routes[app.id]?.deviceUID ?? ""
+        if deviceUID.isEmpty {
+            return Binding(
+                get: { model.routes[app.id]?.volume ?? 1 },
+                set: { model.setAppVolume(for: app, volume: $0) }
+            )
+        }
+        return Binding(
+            get: { model.deviceVolume(uid: deviceUID) },
+            set: { model.setDeviceVolume(uid: deviceUID, value: $0) }
         )
     }
 

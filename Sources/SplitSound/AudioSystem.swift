@@ -78,26 +78,24 @@ enum AudioSystem {
         try setOutputDevice(device.objectID, selector: kAudioHardwarePropertyDefaultSystemOutputDevice)
     }
 
-    /// Control Center’s Sound slider. This is Virtual Main Volume, not the raw channel scalar.
-    static func outputVolume(uid: String) -> Float {
-        guard let device = try? outputDevices().first(where: { $0.uid == uid }) else { return 1 }
-        if let virtual = readProperty(device.objectID, selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume, element: kAudioObjectPropertyElementMain) {
+    /// Control Center’s Sound slider for one output device.
+    static func outputVolume(deviceID: AudioObjectID) -> Float {
+        if let virtual = readProperty(deviceID, selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume, element: kAudioObjectPropertyElementMain) {
             return virtual
         }
-        let values = volumeElements(device.objectID).compactMap { readVolume(device.objectID, element: $0) }
+        let values = volumeElements(deviceID).compactMap { readVolume(deviceID, element: $0) }
         return values.max() ?? 1
     }
 
-    static func setOutputVolume(uid: String, value: Float) {
-        guard let device = try? outputDevices().first(where: { $0.uid == uid }) else { return }
+    static func setOutputVolume(deviceID: AudioObjectID, value: Float) {
         let scalar = min(1, max(0, value))
         var virtual = volumeAddress(selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume, element: kAudioObjectPropertyElementMain)
-        if AudioObjectHasProperty(device.objectID, &virtual) {
-            writeProperty(scalar, device: device.objectID, selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume, element: kAudioObjectPropertyElementMain)
+        if AudioObjectHasProperty(deviceID, &virtual) {
+            writeProperty(scalar, device: deviceID, selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume, element: kAudioObjectPropertyElementMain)
             return
         }
-        for element in volumeElements(device.objectID) {
-            writeVolume(scalar, device: device.objectID, element: element)
+        for element in volumeElements(deviceID) {
+            writeVolume(scalar, device: deviceID, element: element)
         }
     }
 

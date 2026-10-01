@@ -138,6 +138,7 @@ final class AppModel: ObservableObject {
     @Published var routes: [String: StoredRoute] = [:]
     @Published var defaultOutputUID = ""
     @Published var systemVolume: Double = 1
+    @Published var deviceVolumes: [String: Double] = [:]
     @Published var showSystemProcesses = false
     @Published var launchAtLogin = false
     @Published var notes: [String: RowNote] = [:]
@@ -210,7 +211,6 @@ final class AppModel: ObservableObject {
             let devices = (try? AudioSystem.outputDevices()) ?? []
             let apps = AudioSystem.audioApps()
             let defaultUID = (try? AudioSystem.defaultOutputUID()) ?? ""
-            let systemVolume = defaultUID.isEmpty ? 1 : Double(AudioSystem.outputVolume(uid: defaultUID))
             if !defaultUID.isEmpty {
                 try? AudioSystem.alignAlertSounds(withOutput: defaultUID)
             }
@@ -223,7 +223,7 @@ final class AppModel: ObservableObject {
                     self.refreshStoredNames()
                 }
                 if defaultUID != self.defaultOutputUID { self.defaultOutputUID = defaultUID }
-                if abs(systemVolume - self.systemVolume) > 0.005 { self.systemVolume = systemVolume }
+                self.rememberVolumes(for: devices, defaultUID: defaultUID)
                 self.watchSystemVolume(uid: defaultUID)
                 if changed || (readingNotes && !self.routes.isEmpty) {
                     self.reconcile()
@@ -252,12 +252,17 @@ final class AppModel: ObservableObject {
             AudioObjectRemovePropertyListenerBlock(volumeWatch, &previous, DispatchQueue.main, volumeListener)
         }
         guard AudioObjectHasProperty(device.objectID, &listenerAddress) else { return }
+        let watchedID = device.objectID
+        let watchedUID = uid
         let block: AudioObjectPropertyListenerBlock = { _, _ in
+            let value = Double(AudioSystem.outputVolume(deviceID: watchedID))
             Task { @MainActor in
-                guard !AppModel.shared.defaultOutputUID.isEmpty else { return }
-                let value = Double(AudioSystem.outputVolume(uid: AppModel.shared.defaultOutputUID))
-                if abs(value - AppModel.shared.systemVolume) > 0.005 {
-                    AppModel.shared.systemVolume = value
+                let model = AppModel.shared
+                if watchedUID == model.defaultOutputUID, abs(value - model.systemVolume) > 0.005 {
+                    model.systemVolume = value
+                }
+                if abs((model.deviceVolumes[watchedUID] ?? -1) - value) > 0.005 {
+                    model.deviceVolumes[watchedUID] = value
                 }
             }
         }
@@ -268,10 +273,8 @@ final class AppModel: ObservableObject {
     }
 
     func setSystemVolume(_ value: Double) {
-        let clamped = min(1, max(0, value))
-        systemVolume = clamped
         guard !defaultOutputUID.isEmpty else { return }
-        AudioSystem.setOutputVolume(uid: defaultOutputUID, value: Float(clamped))
+        setDeviceVolume(uid: defaultOutputUID, value: value)
     }
 
     func setOutput(for app: AudioApp, deviceUID: String?) {
@@ -282,24 +285,27 @@ final class AppModel: ObservableObject {
         updateRoute(for: app, deviceUID: routes[app.id]?.deviceUID ?? "", eq: preset)
     }
 
-    /// The slider uses the same 0...1 scale as Control Center. 100% of an app is the current system level, not a second louder ceiling.
-    func displayedAppVolume(for app: AudioApp) -> Double {
-        let gain = routes[app.id]?.volume ?? 1
-        return min(1, max(0, systemVolume * gain))
+    func deviceVolume(uid: String) -> Double {
+        deviceVolumes[uid] ?? 1
     }
 
-    func setDisplayedAppVolume(for app: AudioApp, shown: Double) {
-        let shown = min(1, max(0, shown))
-        if systemVolume < 0.02 {
-            setSystemVolume(shown)
-            setAppVolume(for: app, volume: 1)
-            return
+    func setDeviceVolume(uid: String, value: Double) {
+        let clamped = min(1, max(0, value))
+        deviceVolumes[uid] = clamped
+        if uid == defaultOutputUID { systemVolume = clamped }
+        guard let deviceID = devices.first(where: { $0.uid == uid })?.objectID else { return }
+        AudioSystem.setOutputVolume(deviceID: deviceID, value: Float(clamped))
+    }
+
+    /// Fills the volume index for devices we have not seen yet. A volume notification updates one entry itself.
+    private func rememberVolumes(for devices: [OutputDevice], defaultUID: String) {
+        var volumes = deviceVolumes.filter { uid, _ in devices.contains { $0.uid == uid } }
+        for device in devices where volumes[device.uid] == nil {
+            volumes[device.uid] = Double(AudioSystem.outputVolume(deviceID: device.objectID))
         }
-        if shown > systemVolume + 0.015 {
-            setSystemVolume(shown)
-            setAppVolume(for: app, volume: 1)
-        } else {
-            setAppVolume(for: app, volume: shown / systemVolume)
+        if volumes != deviceVolumes { deviceVolumes = volumes }
+        if let current = volumes[defaultUID], abs(current - systemVolume) > 0.005 {
+            systemVolume = current
         }
     }
 

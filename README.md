@@ -20,11 +20,9 @@ Needs macOS 15 or later.
 Split Sound is for when one speaker is wrong for everything playing at once.
 
 - **Music and video at the same time.** Send Spotify or NetEase Cloud Music to a Bluetooth speaker, and leave the browser on the MacBook so a video does not come out of the speaker.
-- **Alerts stay put.** Typing beeps and other system sounds follow System Output, instead of jumping to the Bluetooth speaker.
 - **One list, only what is playing.** Silent apps stay out of the way. A choice is remembered and comes back the next time that app plays.
-- **Volume per speaker.** The slider under System Output changes that device, the same one as Control Center. An app sent to another speaker has a slider for that speaker.
-- **EQ when a speaker needs it.** Presets include a Marshall setting for home speakers such as Acton: less muddy bass, clearer guitars and vocals. Turn it off if you do not want it.
-- **Speaker unplugged.** If that Bluetooth speaker disconnects, the app falls back to the system output, then returns when the speaker reconnects.
+- **Volume per speaker.** The slider under System Output changes that device. An app sent to another speaker has a slider for that speaker.
+- **EQ when a speaker needs it.** Presets include a Marshall setting for home speakers such as Acton: less muddy bass, clearer guitars and vocals.
 
 ## Install
 
