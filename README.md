@@ -2,9 +2,16 @@
 
 Send each Mac app to its own audio output. A music app can play through a Bluetooth speaker while the browser stays on the MacBook speakers.
 
-<img src="Packaging/AppIcon.png" width="96" alt="Split Sound app icon">
+<p align="center">
+  <a href="https://github.com/supergaga/SplitSound/releases/latest"><img src="https://img.shields.io/github/v/release/supergaga/SplitSound?style=for-the-badge&labelColor=1c1c1e&color=0A84FF&logo=github&logoColor=white" alt="Latest Release"></a>
+  <a href="https://github.com/supergaga/SplitSound/releases"><img src="https://img.shields.io/github/downloads/supergaga/SplitSound/total?style=for-the-badge&labelColor=1c1c1e&color=3a3a3c" alt="Downloads"></a>
+  <a href="https://github.com/supergaga/SplitSound/releases/latest/download/SplitSound-macos.zip"><img src="https://img.shields.io/badge/Download-macOS-0A84FF?style=for-the-badge&labelColor=1c1c1e&logo=apple&logoColor=white" alt="Download for macOS"></a>
+  <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/macOS-15%2B-3a3a3c?style=for-the-badge&labelColor=1c1c1e&logo=apple&logoColor=white" alt="macOS 15+"></a>
+</p>
 
-`macos` `macos-app` `menu-bar` `audio` `coreaudio` `swift` `swiftui`
+<p align="center">
+  <img src="Packaging/AppIcon.png" width="96" alt="Split Sound app icon">
+</p>
 
 ## Features
 
