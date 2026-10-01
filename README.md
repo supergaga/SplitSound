@@ -15,6 +15,17 @@ Send each Mac app to its own speaker. Music can play through a Bluetooth speaker
 
 Needs macOS 15 or later.
 
+## Features
+
+Split Sound is for when one speaker is wrong for everything playing at once.
+
+- **Music and video at the same time.** Send Spotify or NetEase Cloud Music to a Bluetooth speaker, and leave the browser on the MacBook so a video does not come out of the speaker.
+- **Alerts stay put.** Typing beeps and other system sounds follow System Output, instead of jumping to the Bluetooth speaker.
+- **One list, only what is playing.** Silent apps stay out of the way. A choice is remembered and comes back the next time that app plays.
+- **Volume per speaker.** The slider under System Output changes that device, the same one as Control Center. An app sent to another speaker has a slider for that speaker.
+- **EQ when a speaker needs it.** Presets include a Marshall setting for home speakers such as Acton: less muddy bass, clearer guitars and vocals. Turn it off if you do not want it.
+- **Speaker unplugged.** If that Bluetooth speaker disconnects, the app falls back to the system output, then returns when the speaker reconnects.
+
 ## Install
 
 Download [SplitSound-macos.zip](https://github.com/supergaga/SplitSound/releases/latest/download/SplitSound-macos.zip), unzip it, and move **Split Sound** into Applications.
@@ -30,7 +41,7 @@ Click the branch icon in the menu bar. **Launch at Login** is at the bottom of t
 An app shows up only while it is playing. Hover the icon to see its name.
 
 - **Output.** Leave it on **Follow System**, or pick another speaker, such as a Bluetooth speaker.
-- **Volume.** Each app has its own slider. Lowering it affects only that app.
+- **Volume.** The slider under System Output changes that device only. If an app is sent to another speaker, its slider changes that speaker.
 - **EQ.** Optional. **Off** leaves the sound alone.
 
 If a Bluetooth speaker disconnects, that app falls back to the system output and returns to the speaker when it reconnects.
