@@ -1,0 +1,3 @@
+CFBundleName = "Split Sound";
+CFBundleDisplayName = "Split Sound";
+NSAudioCaptureUsageDescription = "Split Sound records app audio so it can play that app through a different output device. If you deny access, a routed app stays silent.";

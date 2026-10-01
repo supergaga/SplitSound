@@ -1,0 +1,3 @@
+CFBundleName = "声音分流";
+CFBundleDisplayName = "声音分流";
+NSAudioCaptureUsageDescription = "声音分流需要录制应用的音频，才能把声音送到另一台输出设备。如果拒绝，被分流的应用会没有声音。";

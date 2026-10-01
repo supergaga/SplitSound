@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: ./Packaging/build-app.sh
+
+      - name: Zip
+        run: ditto -c -k --keepParent build/SplitSound.app build/SplitSound-macos.zip
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/SplitSound-macos.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
