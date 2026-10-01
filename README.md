@@ -1,6 +1,6 @@
 # Split Sound
 
-Send each Mac app to its own audio output. A music app can play through a Bluetooth speaker while the browser stays on the MacBook speakers.
+Send each Mac app to its own speaker. Music can play through a Bluetooth speaker while a video in the browser stays on the MacBook.
 
 <p align="center">
   <a href="https://github.com/supergaga/SplitSound/releases/latest"><img src="https://img.shields.io/github/v/release/supergaga/SplitSound?style=for-the-badge&labelColor=1c1c1e&color=0A84FF&logo=github&logoColor=white" alt="Latest Release"></a>
@@ -13,58 +13,46 @@ Send each Mac app to its own audio output. A music app can play through a Blueto
   <img src="Packaging/AppIcon.png" width="96" alt="Split Sound app icon">
 </p>
 
-## Features
-
-- The output volume slider is the same control as System Settings → Sound. Each playing app also has its own volume, and 100% matches that system level.
-- Only apps that are currently playing are listed.
-- Optional EQ presets per app: Bass, Vocal, Harman preference bass, Treble, Night, and Podcast.
-- If the chosen device disconnects, that audio falls back to the system output and returns when the device reconnects.
-- No virtual audio driver and no kernel extension.
-
-## Requirements
-
-macOS 15 or later.
+Needs macOS 15 or later.
 
 ## Install
 
-Download `SplitSound-macos.zip` from the [latest release](https://github.com/supergaga/SplitSound/releases/latest), unzip it, and move **Split Sound** into `/Applications`.
+Download [SplitSound-macos.zip](https://github.com/supergaga/SplitSound/releases/latest/download/SplitSound-macos.zip), unzip it, and move **Split Sound** into Applications.
 
-```bash
-open /Applications/SplitSound.app
-```
+The first time you open it, macOS may block the app because it came from the internet. Control-click **Split Sound**, choose **Open**, then **Open** again.
 
-The menu-bar icon is a branch. Click it to open the panel.
+Click the branch icon in the menu bar. **Launch at Login** is at the bottom of the panel.
 
-macOS may say the app is from an unidentified developer, because this release is not signed with a paid Apple Developer ID. You do not need your own certificate. Right-click the app, choose **Open**, then **Open** again. That approval is kept for this download.
+## Use
 
-Launch at Login works after the app is in `/Applications`.
+**System Output** is where everything goes unless you say otherwise. Set it to the MacBook speakers if that is what you want for most sound. The slider under it is the same volume as Control Center.
 
-## Build from source
+An app shows up only while it is playing. Hover the icon to see its name.
 
-Only needed if you want to change the app. The build script signs it automatically.
+- **Output.** Leave it on **Follow System**, or pick another speaker, such as a Bluetooth speaker.
+- **Volume.** Each app has its own slider. Lowering it affects only that app.
+- **EQ.** Optional. **Off** leaves the sound alone.
 
-```bash
-./Packaging/build-app.sh
-open build/SplitSound.app
-```
+If a Bluetooth speaker disconnects, that app falls back to the system output and returns to the speaker when it reconnects.
 
-A release is published when a `v*` tag is pushed. GitHub Actions builds the zip and attaches it to the release.
+The first time you send an app to another speaker, macOS asks to allow system audio. Allow it. While that app is routed, macOS may show a recording indicator. Split Sound is not saving a recording. If you deny access, the routed app goes silent. **Recording Permission** in the panel opens the setting.
 
-## Usage
+## EQ
 
-1. Set **System Output** to the device everything else should use, such as the MacBook speakers.
-2. Play audio in a music app. Its icon appears in the list. Hover the icon to see the name.
-3. Change that app from **Follow System** to the other device, such as a Bluetooth speaker.
-4. Leave the browser on **Follow System** if web video should stay on the system output.
+| Preset | What it does |
+| --- | --- |
+| Bass | More low end |
+| Vocal | Clearer voices |
+| Harman | A common listening preference, with a little more bass |
+| Marshall | For Marshall home speakers such as Acton: less muddy bass, clearer guitars and vocals |
+| Treble | Brighter top end |
+| Night | Softer, less harsh |
+| Podcast | Voice, with rumble reduced |
 
-The first time an app is routed, macOS asks to record system audio. Allow Split Sound. If access is denied, the routed app stays silent instead of reporting an error. Allow it later in **System Settings → Privacy & Security → Screen & System Audio Recording**. **Recording Permission** in the panel opens that pane.
+## Good to know
 
-## Limitations
+A whole app is one route. Two tabs in the same browser cannot go to different speakers.
 
-Routing applies to a whole app, not to one browser tab.
+Safari’s web video sometimes comes from a separate system process. If the page stays on the old speaker after you route Safari, turn on **Show system processes** and set those WebKit rows the same way.
 
-Safari web audio sometimes comes from a separate WebKit process. If those pages stay on the old device after Safari is routed, turn on **Show system processes** and set the WebKit rows to the same device.
-
-## Privacy
-
-Choices are stored only on this Mac, in `~/Library/Application Support/SplitSound/routes.json`, so a route can be restored. Split Sound does not use the network and does not collect analytics.
+Settings stay on this Mac. Split Sound does not send anything over the network.

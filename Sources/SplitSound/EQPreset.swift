@@ -7,6 +7,7 @@ enum EQPreset: String, CaseIterable, Identifiable, Sendable {
     case bass
     case vocal
     case harman
+    case marshall
     case treble
     case night
     case podcast
@@ -19,6 +20,7 @@ enum EQPreset: String, CaseIterable, Identifiable, Sendable {
         case .bass: String(localized: "Bass")
         case .vocal: String(localized: "Vocal")
         case .harman: String(localized: "Harman")
+        case .marshall: String(localized: "Marshall")
         case .treble: String(localized: "Treble")
         case .night: String(localized: "Night")
         case .podcast: String(localized: "Podcast")
@@ -40,6 +42,16 @@ enum EQPreset: String, CaseIterable, Identifiable, Sendable {
             ]
         case .harman:
             specs = [.lowShelf(hz: 105, db: 5.5, q: 0.71)]
+        case .marshall:
+            // Acton-class Marshall home speakers are bass-reflex from about 45 Hz,
+            // and the port adds a muddy hump around 100–200 Hz. This trims that,
+            // keeps the midrange where guitars and vocals sit, and eases the tweeter.
+            specs = [
+                .highPass(hz: 50, q: 0.71),
+                .peak(hz: 140, db: -3, q: 1),
+                .peak(hz: 2200, db: 2.5, q: 1),
+                .highShelf(hz: 8000, db: -1.5, q: 0.71),
+            ]
         case .treble:
             specs = [.highShelf(hz: 8000, db: 4, q: 0.71)]
         case .night:
